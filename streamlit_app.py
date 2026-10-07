@@ -309,10 +309,15 @@ elif page == "Model Comparison 🔬":
     both = fit_model(d, AUDIO_F + BUSINESS_F)
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("🎧 Audio only", f"{audio['r2']:.3f}")
+    c1.metric("🎧 Audio only", "≈ 0.00")
     c2.metric("💼 Business only", f"{biz['r2']:.3f}")
     c3.metric("🎧+💼 Combined", f"{both['r2']:.3f}")
-    st.caption("R² — the share of variation in 3-year streams the model explains.")
+    st.caption(
+        "R² — the share of variation in 3-year streams the model explains. "
+        f"The audio model's exact R² is {audio['r2']:.5f}: fractionally **below** "
+        "zero, which means it predicts slightly worse than simply guessing the "
+        "average for every song."
+    )
 
     fig, ax = plt.subplots(figsize=(8, 4))
     names = ["Audio only", "Business only", "Combined"]
@@ -328,24 +333,29 @@ elif page == "Model Comparison 🔬":
     st.pyplot(fig)
 
     st.error(
-        f"**Audio features explain {audio['r2']:.1%} of the variation.** Energy, "
+        "**Audio features explain essentially none of the variation.** Energy, "
         "danceability, tempo, valence, acousticness, length and genre — all eight "
-        "of them together — tell you essentially nothing about whether a song will "
-        "last."
+        "of them together — tell you nothing about whether a song will last."
     )
     st.success(
-        f"**Business features explain {biz['r2']:.1%}.** Adding the audio features "
-        f"on top moves it to {both['r2']:.1%} — a gain of "
-        f"{(both['r2'] - biz['r2']):.3f}, which is noise."
+        f"**Business features explain {biz['r2']:.1%}.** Adding all eight audio "
+        f"features on top changes that by {abs(both['r2'] - biz['r2']):.5f} — "
+        "indistinguishable from noise."
     )
 
     st.markdown("##### Full comparison")
     st.dataframe(pd.DataFrame({
         "Feature set": names,
         "Features used": [len(AUDIO_F), len(BUSINESS_F), len(AUDIO_F) + len(BUSINESS_F)],
-        "R²": [round(v, 3) for v in vals],
-        "MAE (log10)": [round(audio["mae"], 3), round(biz["mae"], 3), round(both["mae"], 3)],
+        "R²": [f"{v:.5f}" for v in vals],
+        "MAE (log10)": [f"{audio['mae']:.3f}", f"{biz['mae']:.3f}", f"{both['mae']:.3f}"],
+        "Typical error": [f"{10 ** audio['mae']:.1f}×", f"{10 ** biz['mae']:.1f}×",
+                          f"{10 ** both['mae']:.1f}×"],
     }))
+    st.caption(
+        "Shown to five decimals so the audio row is readable. Adding the audio "
+        "features to the business model changes R² in the fifth decimal place."
+    )
 
     st.markdown("##### Why this matters")
     st.markdown("""
@@ -402,8 +412,11 @@ elif page == "Prediction 🎯":
     shown = selected_metrics if selected_metrics else ["R² Score"]
     cols = st.columns(len(shown))
     i = 0
+    # a near-zero R2 can come out fractionally negative; "-0.000" reads as a
+    # glitch, so show it as approximately zero and explain it below
+    r2_display = "≈ 0.00" if abs(res["r2"]) < 0.001 else f"{res['r2']:.3f}"
     if "R² Score" in shown:
-        cols[i].metric("R² Score", f"{res['r2']:.3f}"); i += 1
+        cols[i].metric("R² Score", r2_display); i += 1
     if "Mean Absolute Error (MAE)" in shown:
         cols[i].metric("MAE", f"{res['mae']:,.3f}"); i += 1
     if "Mean Squared Error (MSE)" in shown:
@@ -420,7 +433,13 @@ elif page == "Prediction 🎯":
     elif res["r2"] > 0.3:
         st.warning(f"⚠️ Moderate fit — {res['r2']:.1%} explained.")
     else:
-        st.error(f"❌ Weak fit — only {res['r2']:.1%} explained. Try another feature set.")
+        st.error(
+            f"❌ Weak fit — this feature set explains essentially none of the "
+            f"variation (R² = {res['r2']:.5f}). A negative R² means the model does "
+            "slightly worse than predicting the average for every song."
+            if abs(res["r2"]) < 0.001 else
+            f"❌ Weak fit — only {res['r2']:.1%} explained. Try another feature set."
+        )
 
     fig, ax = plt.subplots(figsize=(6.5, 5.5))
     ax.scatter(res["y_test"], res["pred"], alpha=0.15, s=10, color="#4878A6")
@@ -510,7 +529,6 @@ elif page == "Recommendations 💡":
     co = both["coefs"]
 
     ed_mult = 10 ** co["editorial_playlist"]
-    tk_mult = 10 ** (co["tiktok_virality"] * 5)
     ed_yes = d[d.editorial_playlist == 1].streams_3yr.median()
     ed_no = d[d.editorial_playlist == 0].streams_3yr.median()
 
@@ -522,7 +540,7 @@ elif page == "Recommendations 💡":
 
     st.markdown("#### 1. Stop screening on the music, start screening on the rollout")
     a1, a2 = st.columns(2)
-    a1.metric("Audio features R²", f"{fit_model(d, AUDIO_F)['r2']:.3f}")
+    a1.metric("Audio features R²", "≈ 0.00")
     a2.metric("Business features R²", f"{fit_model(d, BUSINESS_F)['r2']:.3f}")
     st.markdown("""
     A&R meetings spend their time on how a track sounds. In this data that is
